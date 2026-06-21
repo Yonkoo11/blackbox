@@ -1,110 +1,169 @@
-/// Blackbox — guardrails + verifiable flight recorder for autonomous AI agents.
+/// Blackbox — the accountability layer for autonomous AI agents on Sui.
 ///
-/// An `AgentCap` is an owned Sui object the operator holds. It encodes a spending
-/// policy that Move enforces ON-CHAIN (an over-limit action aborts the transaction —
-/// no trust in the agent required), and it anchors a hash-chain over every action the
-/// agent takes. Each action's payload (the agent's reasoning/observation) is
-/// Seal-encrypted off-chain and stored as a Walrus blob; only the blob id and a
-/// content hash are committed here, making the memory tamper-evident: an off-chain
-/// verifier recomputes the chain from the Walrus blobs and compares against `head_hash`.
+/// An `AgentVault` is a SHARED object that custodies an agent's capital and anchors a
+/// tamper-evident memory hash-chain. The agent (a delegate key) can move money ONLY through
+/// `spend_and_record`, which enforces the spend policy ON-CHAIN (Move aborts an over-limit or
+/// out-of-window action) and appends a memory entry atomically. Each action's payload is
+/// Seal-encrypted off-chain and stored as a Walrus blob; only the blob id and a content hash are
+/// committed here. An off-chain verifier recomputes the chain from the Walrus blobs and compares
+/// against `head_hash`, so any edit to a stored payload is detectable.
 module blackbox::blackbox;
 
 use std::string::String;
 use sui::bcs;
+use sui::balance::{Self, Balance};
 use sui::clock::Clock;
+use sui::coin::{Self, Coin};
 use sui::event;
 use sui::hash;
+use sui::sui::SUI;
+use sui::vec_set::{Self, VecSet};
 
 // === Errors ===
 const ENotActive: u64 = 0;
 const EWindowClosed: u64 = 1;
 const EOverSpendLimit: u64 = 2;
-const ENotOwner: u64 = 3;
+const ENotAgent: u64 = 3;
+const EWrongVault: u64 = 4;
+const EInsufficientBalance: u64 = 5;
+const ENoAccess: u64 = 6;
 
 // === Objects ===
 
-/// Capability + memory anchor for a single agent. Owned by the operator.
-public struct AgentCap has key, store {
+/// Shared, publicly-verifiable agent vault: custody + on-chain spend policy + memory chain anchor.
+public struct AgentVault has key {
     id: UID,
-    owner: address,
-    /// max cumulative value the agent may move under this policy
-    spend_limit: u64,
-    /// cumulative value moved so far
-    spent: u64,
-    /// policy window end in ms (0 = no expiry)
-    expires_at_ms: u64,
+    owner: address,           // operator who administers via OwnerCap
+    agent: address,           // delegate key address authorized to act
+    funds: Balance<SUI>,      // custodied capital; only exits via spend_and_record
+    spend_limit: u64,         // max cumulative value the agent may move
+    spent: u64,               // cumulative value moved so far
+    expires_at_ms: u64,       // policy window end (0 = no expiry)
     active: bool,
-    /// keccak256 hash-chain head over all recorded actions
-    head_hash: vector<u8>,
-    /// number of actions recorded
+    head_hash: vector<u8>,    // keccak256 hash-chain head over all recorded actions
     count: u64,
+    viewers: VecSet<address>, // Seal decryption allowlist (in addition to owner)
+}
+
+/// Owned capability proving operator authority over one vault.
+public struct OwnerCap has key, store {
+    id: UID,
+    vault: ID,
 }
 
 // === Events ===
+public struct VaultCreated has copy, drop {
+    vault: ID,
+    owner: address,
+    agent: address,
+    spend_limit: u64,
+}
 
-/// Emitted on every recorded action — off-chain indexers/verifier consume this.
 public struct ActionRecorded has copy, drop {
-    cap: ID,
+    vault: ID,
     seq: u64,
     amount: u64,
+    recipient: address,
     blob_id: String,
     entry_hash: vector<u8>,
 }
 
-// === Public API ===
+// === Create ===
 
-/// Create an agent capability with a spending policy and transfer it to the caller.
-public fun create_agent(spend_limit: u64, expires_at_ms: u64, ctx: &mut TxContext) {
-    transfer::transfer(new_agent(spend_limit, expires_at_ms, ctx), ctx.sender());
-}
-
-/// Construct an `AgentCap` (used by `create_agent` and tests).
-public fun new_agent(spend_limit: u64, expires_at_ms: u64, ctx: &mut TxContext): AgentCap {
-    AgentCap {
-        id: object::new(ctx),
+/// Create and share a vault funded with `initial`, returning an `OwnerCap` to the caller.
+public fun create_vault(
+    initial: Coin<SUI>,
+    agent: address,
+    spend_limit: u64,
+    expires_at_ms: u64,
+    ctx: &mut TxContext,
+): OwnerCap {
+    let id = object::new(ctx);
+    let vault_id = id.to_inner();
+    let vault = AgentVault {
+        id,
         owner: ctx.sender(),
+        agent,
+        funds: initial.into_balance(),
         spend_limit,
         spent: 0,
         expires_at_ms,
         active: true,
         head_hash: vector::empty(),
         count: 0,
-    }
+        viewers: vec_set::empty(),
+    };
+    event::emit(VaultCreated { vault: vault_id, owner: ctx.sender(), agent, spend_limit });
+    transfer::share_object(vault);
+    OwnerCap { id: object::new(ctx), vault: vault_id }
 }
 
-/// Record an agent action and enforce the spend policy atomically.
-///
-/// `amount`       value moved by this action (0 for non-financial steps)
-/// `blob_id`      Walrus blob id of the Seal-encrypted step payload
-/// `content_hash` keccak256 of the encrypted payload, committed on-chain
-///
-/// Aborts (whole tx reverts) if the policy is violated — this is the guardrail.
-public fun record_action(
-    cap: &mut AgentCap,
+// === Agent actions ===
+
+/// THE guardrail: the agent moves money ONLY through this recorded, capped path.
+public fun spend_and_record(
+    vault: &mut AgentVault,
     amount: u64,
+    recipient: address,
     blob_id: String,
     content_hash: vector<u8>,
     clock: &Clock,
+    ctx: &mut TxContext,
 ) {
-    assert!(cap.active, ENotActive);
-    if (cap.expires_at_ms != 0) {
-        assert!(clock.timestamp_ms() <= cap.expires_at_ms, EWindowClosed);
+    assert!(ctx.sender() == vault.agent, ENotAgent);
+    assert!(vault.active, ENotActive);
+    if (vault.expires_at_ms != 0) {
+        assert!(clock.timestamp_ms() <= vault.expires_at_ms, EWindowClosed);
     };
-    // GUARDRAIL: the agent physically cannot exceed its on-chain limit.
-    assert!(cap.spent + amount <= cap.spend_limit, EOverSpendLimit);
-    cap.spent = cap.spent + amount;
+    assert!(vault.spent + amount <= vault.spend_limit, EOverSpendLimit);
+    assert!(balance::value(&vault.funds) >= amount, EInsufficientBalance);
 
-    // TAMPER-EVIDENCE: entry_hash = keccak256(prev_head || content_hash || amount || seq)
-    let seq = cap.count;
-    let entry_hash = compute_entry_hash(&cap.head_hash, &content_hash, amount, seq);
+    vault.spent = vault.spent + amount;
+    let paid = coin::take(&mut vault.funds, amount, ctx);
+    transfer::public_transfer(paid, recipient);
 
-    cap.head_hash = entry_hash;
-    cap.count = seq + 1;
-
-    event::emit(ActionRecorded { cap: object::id(cap), seq, amount, blob_id, entry_hash });
+    append_entry(vault, amount, recipient, blob_id, content_hash);
 }
 
-/// Deterministic entry hash — the verifier reruns this off-chain over Walrus blobs.
+/// Record a non-financial memory step (observation / reasoning). amount = 0.
+public fun record_note(
+    vault: &mut AgentVault,
+    blob_id: String,
+    content_hash: vector<u8>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    assert!(ctx.sender() == vault.agent, ENotAgent);
+    assert!(vault.active, ENotActive);
+    if (vault.expires_at_ms != 0) {
+        assert!(clock.timestamp_ms() <= vault.expires_at_ms, EWindowClosed);
+    };
+    let agent = vault.agent;
+    append_entry(vault, 0, agent, blob_id, content_hash);
+}
+
+fun append_entry(
+    vault: &mut AgentVault,
+    amount: u64,
+    recipient: address,
+    blob_id: String,
+    content_hash: vector<u8>,
+) {
+    let seq = vault.count;
+    let entry_hash = compute_entry_hash(&vault.head_hash, &content_hash, amount, seq);
+    vault.head_hash = entry_hash;
+    vault.count = seq + 1;
+    event::emit(ActionRecorded {
+        vault: object::id(vault),
+        seq,
+        amount,
+        recipient,
+        blob_id,
+        entry_hash,
+    });
+}
+
+/// Deterministic entry hash — the verifier reruns this off-chain over the Walrus blobs.
 public fun compute_entry_hash(
     prev_head: &vector<u8>,
     content_hash: &vector<u8>,
@@ -119,23 +178,69 @@ public fun compute_entry_hash(
     hash::keccak256(&preimage)
 }
 
-/// Owner can freeze the agent (kill switch).
-public fun deactivate(cap: &mut AgentCap, ctx: &TxContext) {
-    assert!(cap.owner == ctx.sender(), ENotOwner);
-    cap.active = false;
+// === Seal access policy ===
+
+/// Seal key servers dry-run this; access is granted iff it does NOT abort.
+/// Grants decryption to the vault owner and any allowlisted viewer (auditor).
+/// `id` must be namespaced by the vault's object id (prevents cross-vault key reuse).
+entry fun seal_approve(id: vector<u8>, vault: &AgentVault, ctx: &TxContext) {
+    assert!(is_prefix(&vault.id.to_bytes(), &id), ENoAccess);
+    let s = ctx.sender();
+    assert!(s == vault.owner || vault.viewers.contains(&s), ENoAccess);
+}
+
+fun is_prefix(prefix: &vector<u8>, full: &vector<u8>): bool {
+    let plen = vector::length(prefix);
+    if (plen > vector::length(full)) return false;
+    let mut i = 0;
+    while (i < plen) {
+        if (*vector::borrow(prefix, i) != *vector::borrow(full, i)) return false;
+        i = i + 1;
+    };
+    true
+}
+
+// === Admin (OwnerCap-gated) ===
+
+public fun add_viewer(cap: &OwnerCap, vault: &mut AgentVault, viewer: address) {
+    assert!(cap.vault == object::id(vault), EWrongVault);
+    vault.viewers.insert(viewer);
+}
+
+public fun remove_viewer(cap: &OwnerCap, vault: &mut AgentVault, viewer: address) {
+    assert!(cap.vault == object::id(vault), EWrongVault);
+    vault.viewers.remove(&viewer);
+}
+
+/// Kill switch — freezes all agent actions.
+public fun deactivate(cap: &OwnerCap, vault: &mut AgentVault) {
+    assert!(cap.vault == object::id(vault), EWrongVault);
+    vault.active = false;
+}
+
+/// Anyone may add funds to a vault.
+public fun top_up(vault: &mut AgentVault, c: Coin<SUI>) {
+    balance::join(&mut vault.funds, c.into_balance());
+}
+
+/// Owner withdraws remaining funds (e.g. after deactivation).
+public fun withdraw(
+    cap: &OwnerCap,
+    vault: &mut AgentVault,
+    amount: u64,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    assert!(cap.vault == object::id(vault), EWrongVault);
+    coin::take(&mut vault.funds, amount, ctx)
 }
 
 // === Views ===
-public fun head_hash(cap: &AgentCap): vector<u8> { cap.head_hash }
-public fun count(cap: &AgentCap): u64 { cap.count }
-public fun spent(cap: &AgentCap): u64 { cap.spent }
-public fun spend_limit(cap: &AgentCap): u64 { cap.spend_limit }
-public fun remaining(cap: &AgentCap): u64 { cap.spend_limit - cap.spent }
-public fun is_active(cap: &AgentCap): bool { cap.active }
-
-// === Test-only helpers ===
-#[test_only]
-public fun destroy_for_test(cap: AgentCap) {
-    let AgentCap { id, owner: _, spend_limit: _, spent: _, expires_at_ms: _, active: _, head_hash: _, count: _ } = cap;
-    id.delete();
-}
+public fun head_hash(v: &AgentVault): vector<u8> { v.head_hash }
+public fun count(v: &AgentVault): u64 { v.count }
+public fun spent(v: &AgentVault): u64 { v.spent }
+public fun spend_limit(v: &AgentVault): u64 { v.spend_limit }
+public fun remaining(v: &AgentVault): u64 { v.spend_limit - v.spent }
+public fun balance_value(v: &AgentVault): u64 { balance::value(&v.funds) }
+public fun is_active(v: &AgentVault): bool { v.active }
+public fun owner(v: &AgentVault): address { v.owner }
+public fun agent(v: &AgentVault): address { v.agent }
