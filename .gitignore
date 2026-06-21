@@ -48,3 +48,11 @@ deployments/local-*.json
 # Internal planning / working notes — never published. Public docs go in docs/.
 ai/
 .private/
+
+# demo video media (regenerate via video/*.sh; final mp4 lives on YouTube/submission)
+video/clips/
+video/audio/
+video/composites/
+video/frames/
+*.webm
+*.mp4
