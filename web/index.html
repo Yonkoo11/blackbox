@@ -4,6 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Blackbox — verify an AI agent's record</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg" />
+<meta property="og:title" content="Blackbox — the flight recorder for AI agents" />
+<meta property="og:description" content="Give an AI agent money without trusting it. On-chain spend limits + verifiable, tamper-evident memory on Sui, Walrus and Seal." />
 <style>
   :root{
     --bg:#0b0e14; --panel:#121722; --panel2:#0f141d; --line:#1e2735;
@@ -15,8 +18,8 @@
     color:var(--text);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
   .wrap{max-width:1000px;margin:0 auto;padding:40px 24px 80px}
   header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
-  .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#4ea1ff,#7c5cff);
-    display:grid;place-items:center;font-weight:800;color:#fff}
+  .logo{width:38px;height:38px;display:grid;place-items:center}
+  .logo svg{width:38px;height:38px;border-radius:10px;display:block}
   h1{font-size:22px;margin:0;letter-spacing:-.2px}
   .sub{color:var(--dim);margin:2px 0 28px;font-size:14px}
   .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
@@ -60,7 +63,7 @@
 <body>
 <div class="wrap">
   <header>
-    <div class="logo">B</div>
+    <div class="logo"><svg viewBox="0 0 512 512" aria-label="Blackbox"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4ea1ff"/><stop offset="1" stop-color="#7c5cff"/></linearGradient></defs><rect width="512" height="512" rx="116" fill="url(#lg)"/><path d="M136 188 L256 120 L376 188 L376 324 L256 392 L136 324 Z" fill="none" stroke="#fff" stroke-width="22" stroke-linejoin="round" opacity="0.55"/><path d="M188 258 l44 44 l96 -100" fill="none" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
     <div>
       <h1>Blackbox</h1>
       <div class="sub">The flight recorder for AI agents — verify what an agent did, and prove no one changed the record.</div>
@@ -167,6 +170,11 @@ function render(){
   const chainValid = recomputedHead===headHex && rows.every(r=>r.ok);
   const spent = Number(fields.spent), limit = Number(fields.spend_limit);
   const pct = limit? Math.min(100, Math.round(spent/limit*100)) : 0;
+  const sui = m => (Number(m)/1e9).toLocaleString(undefined,{maximumFractionDigits:4});
+  const humanWin = ms => { ms=Number(ms); if(!ms) return ''; const h=ms/3600000; if(h>=24) return (h/24)+'d'; if(h>=1) return h+'h'; return Math.round(ms/60000)+'m'; };
+  const rateTxt = Number(fields.window_ms) ? `${sui(fields.rate_limit)} SUI / ${humanWin(fields.window_ms)}` : 'none';
+  const recipTxt = fields.recipients_restricted ? 'allowlist enforced' : 'any address';
+  const expTxt = Number(fields.expires_at_ms) ? new Date(Number(fields.expires_at_ms)).toISOString().slice(0,10) : 'none';
 
   $status.innerHTML = `
     <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
@@ -188,8 +196,17 @@ function render(){
         <div class="stat"><div class="k">Actions recorded</div><div class="v">${fields.count}</div></div>
         <div class="stat"><div class="k">Agent</div><div class="v">${norm(fields.agent).slice(0,10)}…</div></div>
         <div class="stat"><div class="k">Status</div><div class="v">${fields.active?'active':'frozen'}</div></div>
-        <div class="stat"><div class="k">Spent / limit (MIST)</div><div class="v">${spent.toLocaleString()} / ${limit.toLocaleString()}
+        <div class="stat"><div class="k">Spent / lifetime cap</div><div class="v">${sui(spent)} / ${sui(limit)} SUI
           <div class="meter"><i style="width:${pct}%"></i></div></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="muted" style="margin-bottom:10px">On-chain guardrail — enforced by the contract, not by trust</div>
+      <div class="summary">
+        <div class="stat"><div class="k">Rate limit</div><div class="v">${rateTxt}</div></div>
+        <div class="stat"><div class="k">Recipients</div><div class="v">${recipTxt}</div></div>
+        <div class="stat"><div class="k">Policy expiry</div><div class="v">${expTxt}</div></div>
+        <div class="stat"><div class="k">Kill switch</div><div class="v">${fields.active?'armed':'triggered'}</div></div>
       </div>
     </div>
     <div class="card">

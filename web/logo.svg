@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Blackbox logo">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4ea1ff"/>
+      <stop offset="1" stop-color="#7c5cff"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#g)"/>
+  <!-- vault / flight-recorder box -->
+  <path d="M136 188 L256 120 L376 188 L376 324 L256 392 L136 324 Z"
+        fill="none" stroke="#ffffff" stroke-width="22" stroke-linejoin="round" opacity="0.55"/>
+  <!-- verification check -->
+  <path d="M188 258 l44 44 l96 -100"
+        fill="none" stroke="#ffffff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
