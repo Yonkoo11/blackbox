@@ -27,6 +27,25 @@ testnet wallet and re-run (`sui client transfer-sui ...`); the demo reuses persi
 - Tampering one stored payload → that step + everything after it flips to `TAMPERED`, `chainValid: false`
 - Spend capped on-chain: `spent 0.01 SUI` against a `0.05 SUI` limit; over-limit aborts (Move test).
 
+## DeepBook agent
+
+```bash
+npm run deepbook  # live: read SUI/DBUSDC market, attempt an ASK, record the decision in Blackbox, verify
+```
+
+A reference autonomous trading agent that **reads real DeepBook v3 market data** from the
+live testnet SUI/DBUSDC pool (mid price, tick/lot/min size, level-2 ticks), decides on a
+passive maker ASK at the pool min size one tick above mid, and **records that decision
+verifiably in Blackbox** (Seal-encrypted → Walrus → on-chain hash chain). It then `verify()`s
+the vault so the trade-decision shows up as the latest **VALID** entry.
+
+The decision is recorded **regardless of whether the order rests**: the `orderOutcome` field is
+either `rested:<txDigest>` or `blocked:<exact on-chain error>`. Placing an actual *resting* order
+on testnet needs **≥ 1 SUI** (the pool `minSize`) sitting in the agent's DeepBook `BalanceManager`;
+the public testnet faucet is hard IP-rate-limited, so on a low-funded manager the order aborts in
+`balance_manager::withdraw_with_proof` (insufficient balance) and the agent records that exact
+blocking error instead of faking a fill.
+
 ## API
 ```ts
 const bb = new BlackboxClient(PACKAGE_ID); // testnet
