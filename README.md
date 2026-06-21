@@ -7,6 +7,12 @@ encrypted, tamper-evident memory** stored on Walrus and selectively disclosable 
 
 Built for **Sui Overflow 2026 — Walrus track**.
 
+- **Live verifier (no login):** https://yonkoo11.github.io/blackbox/
+- **Testnet package:** `0x1e96efd1d947d8a17359fb5ac0d1f91e4ff953550e1146a38c9f0e7bcc422720`
+
+The live verifier reads a real agent vault straight from Sui + Walrus and recomputes the cryptographic
+chain in your browser — toggle "flip a byte" to watch it catch a tampered record.
+
 ## Why it matters
 Autonomous agents are starting to move money, but there's no way to (a) bound what they can spend or
 (b) prove what they did. Web2 agent logs (LangSmith, Helicone) are centralized and tamper-able. The
