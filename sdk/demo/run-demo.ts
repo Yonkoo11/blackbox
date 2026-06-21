@@ -17,7 +17,7 @@ import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from '@mysten/sui/jsonRpc';
 import { BlackboxClient } from '../src/client.js';
 import { getBlob, aesDecrypt } from '../src/index.js';
 
-const PACKAGE_ID = process.env.BLACKBOX_PKG ?? '0x1e96efd1d947d8a17359fb5ac0d1f91e4ff953550e1146a38c9f0e7bcc422720';
+const PACKAGE_ID = process.env.BLACKBOX_PKG ?? '0xc2a851cb0cd8603740fe0b838623b341652fd8f7945fcb1351f8ca158e9c5225';
 const KEYS_PATH = new URL('../.demo-keys.json', import.meta.url);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const rpc = new SuiJsonRpcClient({ url: getJsonRpcFullnodeUrl('testnet'), network: 'testnet' });
@@ -73,14 +73,17 @@ async function main() {
   const recipient = new Ed25519Keypair().toSuiAddress();
 
   console.log('Funding ephemeral keys...');
-  await ensureFunded(owner.toSuiAddress(), 'owner', 250_000_000n);
+  await ensureFunded(owner.toSuiAddress(), 'owner', 140_000_000n);
   await ensureFunded(agent.toSuiAddress(), 'agent', 30_000_000n);
   await sleep(2000);
 
   const bb = new BlackboxClient(PACKAGE_ID);
 
-  console.log('\nCreating vault (limit 0.05 SUI, funded 0.2 SUI)...');
-  const { vaultId, digest: createDigest } = await bb.createVault(owner, agent.toSuiAddress(), 50_000_000n, 200_000_000n);
+  console.log('\nCreating vault (lifetime 0.05 SUI, rate 0.02 SUI / 24h, funded 0.1 SUI)...');
+  // spend_limit, fund, windowMs(24h), rateLimit(0.02 SUI)
+  const { vaultId, digest: createDigest } = await bb.createVault(
+    owner, agent.toSuiAddress(), 50_000_000n, 100_000_000n, 86_400_000n, 20_000_000n,
+  );
   console.log('  vaultId:', vaultId, '\n  create digest:', createDigest);
 
   const digests: string[] = [];

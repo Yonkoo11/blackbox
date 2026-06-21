@@ -8,7 +8,7 @@ encrypted, tamper-evident memory** stored on Walrus and selectively disclosable 
 Built for **Sui Overflow 2026 — Walrus track**.
 
 - **Live verifier (no login):** https://yonkoo11.github.io/blackbox/
-- **Testnet package:** `0x1e96efd1d947d8a17359fb5ac0d1f91e4ff953550e1146a38c9f0e7bcc422720`
+- **Testnet package:** `0xc2a851cb0cd8603740fe0b838623b341652fd8f7945fcb1351f8ca158e9c5225`
 
 The live verifier reads a real agent vault straight from Sui + Walrus and recomputes the cryptographic
 chain in your browser — toggle "flip a byte" to watch it catch a tampered record.
@@ -35,11 +35,21 @@ object-capability model is exactly that missing enforcement layer.
 - **Seal** — threshold encryption + on-chain `seal_approve` access policy.
 - **DeepBook v3** (flagship demo, in progress) — an autonomous trading agent recording its decisions.
 
+## Guardrail (on-chain, enforced)
+- **Lifetime cap** + **rolling rate limit** (max spend per time window) + **per-recipient allowlist** +
+  **expiry** + **owner kill switch**. The agent (a delegate key) is the only one who can act, and only
+  through `spend_and_record`. Over-limit / over-rate / disallowed-recipient / inactive all abort on-chain.
+
 ## Status (verified, testnet)
-- Move package live on Sui testnet: `0x1e96efd1d947d8a17359fb5ac0d1f91e4ff953550e1146a38c9f0e7bcc422720`
-- Move tests: **5/5 pass** (`cd move && sui move test`).
+- Move package live on Sui testnet: `0xc2a851cb0cd8603740fe0b838623b341652fd8f7945fcb1351f8ca158e9c5225`
+- Move tests: **10/10 pass** (`cd move && sui move test`) — custody, lifetime cap, rate-limit (+ window
+  reset), recipient allowlist, kill switch, and the `seal_approve` access policy.
 - End-to-end demo: **PASS** — 3 actions recorded with real Seal + Walrus, `verify` VALID×3,
   tamper-detection works, spend capped on-chain (`cd sdk && npm run demo`).
+- **Seal selective disclosure PROVEN** (`npm run reveal`): owner decrypts, stranger denied on-chain.
+- **DeepBook agent** (`npm run deepbook`): reads real testnet SUI/DBUSDC market + records its decision
+  verifiably (a *resting* order needs ≥1 SUI in the BalanceManager; the public testnet faucet is
+  rate-limited, so the agent records the exact on-chain block instead of faking a fill).
 
 ## Repo
 - `move/` — the `blackbox` Move package (`AgentVault`, `spend_and_record`, `record_note`, `seal_approve`).

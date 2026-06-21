@@ -22,7 +22,7 @@ only faucet SUI). If the public faucet is rate-limited, fund the printed owner/a
 testnet wallet and re-run (`sui client transfer-sui ...`); the demo reuses persisted keys.
 
 ### What the demo proves (last verified run, testnet)
-- Package `0x1e96efd1d947d8a17359fb5ac0d1f91e4ff953550e1146a38c9f0e7bcc422720`
+- Package `0xc2a851cb0cd8603740fe0b838623b341652fd8f7945fcb1351f8ca158e9c5225`
 - 3 actions recorded with **Seal** encryption + **Walrus** storage → `verify` = VALID×3, `chainValid: true`
 - Tampering one stored payload → that step + everything after it flips to `TAMPERED`, `chainValid: false`
 - Spend capped on-chain: `spent 0.01 SUI` against a `0.05 SUI` limit; over-limit aborts (Move test).

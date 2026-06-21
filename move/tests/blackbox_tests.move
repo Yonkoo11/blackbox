@@ -18,7 +18,7 @@ fun mint(amount: u64, sc: &mut ts::Scenario): coin::Coin<SUI> {
 #[test]
 fun spend_records_and_chains() {
     let mut sc = ts::begin(OWNER);
-    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 100, 0, sc.ctx());
+    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 100, 0, 0, 0, sc.ctx());
     transfer::public_transfer(cap, OWNER);
 
     sc.next_tx(AGENT);
@@ -50,7 +50,7 @@ fun spend_records_and_chains() {
 #[expected_failure(abort_code = 2, location = blackbox)] // EOverSpendLimit
 fun over_limit_aborts() {
     let mut sc = ts::begin(OWNER);
-    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 100, 0, sc.ctx());
+    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 100, 0, 0, 0, sc.ctx());
     transfer::public_transfer(cap, OWNER);
 
     sc.next_tx(AGENT);
@@ -70,7 +70,7 @@ fun over_limit_aborts() {
 #[expected_failure(abort_code = 3, location = blackbox)] // ENotAgent
 fun non_agent_cannot_spend() {
     let mut sc = ts::begin(OWNER);
-    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 100, 0, sc.ctx());
+    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 100, 0, 0, 0, sc.ctx());
     transfer::public_transfer(cap, OWNER);
 
     sc.next_tx(RECIP); // not the agent
@@ -87,7 +87,7 @@ fun non_agent_cannot_spend() {
 #[expected_failure(abort_code = 0, location = blackbox)] // ENotActive
 fun deactivated_blocks_action() {
     let mut sc = ts::begin(OWNER);
-    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 100, 0, sc.ctx());
+    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 100, 0, 0, 0, sc.ctx());
 
     sc.next_tx(OWNER);
     let mut vault = ts::take_shared<AgentVault>(&sc);
@@ -108,7 +108,7 @@ fun deactivated_blocks_action() {
 #[test]
 fun seal_access_policy() {
     let mut sc = ts::begin(OWNER);
-    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 100, 0, sc.ctx());
+    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 100, 0, 0, 0, sc.ctx());
 
     sc.next_tx(OWNER);
     let mut vault = ts::take_shared<AgentVault>(&sc);
@@ -141,7 +141,7 @@ fun seal_access_policy() {
 #[test]
 fun owner_can_view_deactivate_and_withdraw() {
     let mut sc = ts::begin(OWNER);
-    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 100, 0, sc.ctx());
+    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 100, 0, 0, 0, sc.ctx());
 
     sc.next_tx(OWNER);
     let mut vault = ts::take_shared<AgentVault>(&sc);
@@ -153,6 +153,86 @@ fun owner_can_view_deactivate_and_withdraw() {
     transfer::public_transfer(refund, OWNER);
 
     ts::return_shared(vault);
+    transfer::public_transfer(cap, OWNER);
+    sc.end();
+}
+
+#[test]
+#[expected_failure(abort_code = 7, location = blackbox)] // EOverRateLimit
+fun rate_limit_aborts() {
+    let mut sc = ts::begin(OWNER);
+    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 1000, 1000, 50, 0, sc.ctx());
+    transfer::public_transfer(cap, OWNER);
+    sc.next_tx(AGENT);
+    let mut vault = ts::take_shared<AgentVault>(&sc);
+    let clk = clock::create_for_testing(sc.ctx());
+    blackbox::spend_and_record(&mut vault, 30, RECIP, b"a".to_string(), b"h", &clk, sc.ctx());
+    // 30 + 30 = 60 > rate_limit 50 within the same window -> abort
+    blackbox::spend_and_record(&mut vault, 30, RECIP, b"b".to_string(), b"h", &clk, sc.ctx());
+    clock::destroy_for_testing(clk);
+    ts::return_shared(vault);
+    sc.end();
+}
+
+#[test]
+fun rate_window_resets() {
+    let mut sc = ts::begin(OWNER);
+    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 1000, 1000, 50, 0, sc.ctx());
+    transfer::public_transfer(cap, OWNER);
+    sc.next_tx(AGENT);
+    let mut vault = ts::take_shared<AgentVault>(&sc);
+    let mut clk = clock::create_for_testing(sc.ctx());
+    blackbox::spend_and_record(&mut vault, 40, RECIP, b"a".to_string(), b"h", &clk, sc.ctx());
+    assert!(blackbox::window_spent(&vault) == 40, 400);
+    // advance past the window -> the tumbling window resets
+    clock::set_for_testing(&mut clk, 1000);
+    blackbox::spend_and_record(&mut vault, 40, RECIP, b"b".to_string(), b"h", &clk, sc.ctx());
+    assert!(blackbox::window_spent(&vault) == 40, 401); // reset, then +40
+    assert!(blackbox::spent(&vault) == 80, 402);        // lifetime keeps accumulating
+    clock::destroy_for_testing(clk);
+    ts::return_shared(vault);
+    sc.end();
+}
+
+#[test]
+#[expected_failure(abort_code = 8, location = blackbox)] // ERecipientNotAllowed
+fun recipient_not_allowed_aborts() {
+    let mut sc = ts::begin(OWNER);
+    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 1000, 0, 0, 0, sc.ctx());
+    sc.next_tx(OWNER);
+    let mut vault = ts::take_shared<AgentVault>(&sc);
+    blackbox::set_recipient_restriction(&cap, &mut vault, true);
+    ts::return_shared(vault);
+
+    sc.next_tx(AGENT);
+    let mut vault2 = ts::take_shared<AgentVault>(&sc);
+    let clk = clock::create_for_testing(sc.ctx());
+    // RECIP is not on the allowlist -> abort
+    blackbox::spend_and_record(&mut vault2, 10, RECIP, b"a".to_string(), b"h", &clk, sc.ctx());
+    clock::destroy_for_testing(clk);
+    ts::return_shared(vault2);
+    transfer::public_transfer(cap, OWNER);
+    sc.end();
+}
+
+#[test]
+fun recipient_allowed_after_add() {
+    let mut sc = ts::begin(OWNER);
+    let cap = blackbox::create_vault(mint(1000, &mut sc), AGENT, 1000, 0, 0, 0, sc.ctx());
+    sc.next_tx(OWNER);
+    let mut vault = ts::take_shared<AgentVault>(&sc);
+    blackbox::set_recipient_restriction(&cap, &mut vault, true);
+    blackbox::add_recipient(&cap, &mut vault, RECIP);
+    ts::return_shared(vault);
+
+    sc.next_tx(AGENT);
+    let mut vault2 = ts::take_shared<AgentVault>(&sc);
+    let clk = clock::create_for_testing(sc.ctx());
+    blackbox::spend_and_record(&mut vault2, 10, RECIP, b"a".to_string(), b"h", &clk, sc.ctx());
+    assert!(blackbox::spent(&vault2) == 10, 500);
+    assert!(blackbox::is_recipient_allowed(&vault2, RECIP), 501);
+    clock::destroy_for_testing(clk);
+    ts::return_shared(vault2);
     transfer::public_transfer(cap, OWNER);
     sc.end();
 }

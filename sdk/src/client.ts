@@ -49,13 +49,31 @@ export class BlackboxClient {
     return `${this.packageId}::blackbox::ActionRecorded`;
   }
 
-  /** Owner creates + shares a vault funded with `fundMist`, agent = `agentAddr`. */
-  async createVault(owner: Ed25519Keypair, agentAddr: string, spendLimitMist: bigint, fundMist: bigint) {
+  /**
+   * Owner creates + shares a vault funded with `fundMist`, agent = `agentAddr`.
+   * `windowMs`/`rateLimitMist` set a rolling rate cap (0 disables it); `expiresAtMs` a policy expiry.
+   */
+  async createVault(
+    owner: Ed25519Keypair,
+    agentAddr: string,
+    spendLimitMist: bigint,
+    fundMist: bigint,
+    windowMs: bigint = 0n,
+    rateLimitMist: bigint = 0n,
+    expiresAtMs: bigint = 0n,
+  ) {
     const tx = new Transaction();
     const [coin] = tx.splitCoins(tx.gas, [tx.pure.u64(fundMist)]);
     const cap = tx.moveCall({
       target: `${this.packageId}::blackbox::create_vault`,
-      arguments: [coin, tx.pure.address(agentAddr), tx.pure.u64(spendLimitMist), tx.pure.u64(0n)],
+      arguments: [
+        coin,
+        tx.pure.address(agentAddr),
+        tx.pure.u64(spendLimitMist),
+        tx.pure.u64(windowMs),
+        tx.pure.u64(rateLimitMist),
+        tx.pure.u64(expiresAtMs),
+      ],
     });
     tx.transferObjects([cap], owner.toSuiAddress());
 

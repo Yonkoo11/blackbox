@@ -13,8 +13,8 @@ import { SealClient, SessionKey } from '@mysten/seal';
 import { BlackboxClient } from '../src/client.js';
 import { getBlob } from '../src/walrus.js';
 
-const PKG = '0x1e96efd1d947d8a17359fb5ac0d1f91e4ff953550e1146a38c9f0e7bcc422720';
-const VAULT = '0x3aae4b99aca7e0bcd2ce7ca4787624c61a7cbca85d60038f77824c9a6df2a18c';
+const PKG = '0xc2a851cb0cd8603740fe0b838623b341652fd8f7945fcb1351f8ca158e9c5225';
+const VAULT = '0x8d1e23c0619253dffcaf004bc32781bf62d25664f7cd18ab593891da781a6516';
 const KEY_SERVERS = [
   '0x73d05d62c18d9374e3ea529e8e0ed6161da1a141a94d3f76ae3fe4e99356db75',
   '0xf5d14a81a982144ae441cd7d64b09027f116a468bd36e7eca494f750591623c8',

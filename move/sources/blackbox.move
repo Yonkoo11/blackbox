@@ -2,11 +2,11 @@
 ///
 /// An `AgentVault` is a SHARED object that custodies an agent's capital and anchors a
 /// tamper-evident memory hash-chain. The agent (a delegate key) can move money ONLY through
-/// `spend_and_record`, which enforces the spend policy ON-CHAIN (Move aborts an over-limit or
-/// out-of-window action) and appends a memory entry atomically. Each action's payload is
-/// Seal-encrypted off-chain and stored as a Walrus blob; only the blob id and a content hash are
-/// committed here. An off-chain verifier recomputes the chain from the Walrus blobs and compares
-/// against `head_hash`, so any edit to a stored payload is detectable.
+/// `spend_and_record`, which enforces the spend policy ON-CHAIN (Move aborts an over-limit,
+/// over-rate, disallowed-recipient, or out-of-window action) and appends a memory entry atomically.
+/// Each action's payload is Seal-encrypted off-chain and stored as a Walrus blob; only the blob id
+/// and a content hash are committed here. An off-chain verifier recomputes the chain from the Walrus
+/// blobs and compares against `head_hash`, so any edit to a stored payload is detectable.
 module blackbox::blackbox;
 
 use std::string::String;
@@ -27,22 +27,35 @@ const ENotAgent: u64 = 3;
 const EWrongVault: u64 = 4;
 const EInsufficientBalance: u64 = 5;
 const ENoAccess: u64 = 6;
+const EOverRateLimit: u64 = 7;
+const ERecipientNotAllowed: u64 = 8;
 
 // === Objects ===
 
 /// Shared, publicly-verifiable agent vault: custody + on-chain spend policy + memory chain anchor.
 public struct AgentVault has key {
     id: UID,
-    owner: address,           // operator who administers via OwnerCap
-    agent: address,           // delegate key address authorized to act
-    funds: Balance<SUI>,      // custodied capital; only exits via spend_and_record
-    spend_limit: u64,         // max cumulative value the agent may move
-    spent: u64,               // cumulative value moved so far
-    expires_at_ms: u64,       // policy window end (0 = no expiry)
+    owner: address,                  // operator who administers via OwnerCap
+    agent: address,                  // delegate key address authorized to act
+    funds: Balance<SUI>,             // custodied capital; only exits via spend_and_record
+    // lifetime cap
+    spend_limit: u64,                // max cumulative value the agent may ever move
+    spent: u64,                      // cumulative value moved so far
+    // rolling-window rate cap (tumbling window). window_ms == 0 disables it.
+    window_ms: u64,
+    rate_limit: u64,                 // max value movable within one window
+    window_start_ms: u64,
+    window_spent: u64,
+    // destination control
+    recipients_restricted: bool,
+    allowed_recipients: VecSet<address>,
+    // policy validity + lifecycle
+    expires_at_ms: u64,              // policy window end (0 = no expiry)
     active: bool,
-    head_hash: vector<u8>,    // keccak256 hash-chain head over all recorded actions
+    // verifiable memory
+    head_hash: vector<u8>,           // keccak256 hash-chain head over all recorded actions
     count: u64,
-    viewers: VecSet<address>, // Seal decryption allowlist (in addition to owner)
+    viewers: VecSet<address>,        // Seal decryption allowlist (in addition to owner)
 }
 
 /// Owned capability proving operator authority over one vault.
@@ -57,6 +70,8 @@ public struct VaultCreated has copy, drop {
     owner: address,
     agent: address,
     spend_limit: u64,
+    rate_limit: u64,
+    window_ms: u64,
 }
 
 public struct ActionRecorded has copy, drop {
@@ -71,10 +86,13 @@ public struct ActionRecorded has copy, drop {
 // === Create ===
 
 /// Create and share a vault funded with `initial`, returning an `OwnerCap` to the caller.
+/// `window_ms`/`rate_limit` define a rolling rate cap (set window_ms = 0 to disable).
 public fun create_vault(
     initial: Coin<SUI>,
     agent: address,
     spend_limit: u64,
+    window_ms: u64,
+    rate_limit: u64,
     expires_at_ms: u64,
     ctx: &mut TxContext,
 ): OwnerCap {
@@ -87,20 +105,26 @@ public fun create_vault(
         funds: initial.into_balance(),
         spend_limit,
         spent: 0,
+        window_ms,
+        rate_limit,
+        window_start_ms: 0,
+        window_spent: 0,
+        recipients_restricted: false,
+        allowed_recipients: vec_set::empty(),
         expires_at_ms,
         active: true,
         head_hash: vector::empty(),
         count: 0,
         viewers: vec_set::empty(),
     };
-    event::emit(VaultCreated { vault: vault_id, owner: ctx.sender(), agent, spend_limit });
+    event::emit(VaultCreated { vault: vault_id, owner: ctx.sender(), agent, spend_limit, rate_limit, window_ms });
     transfer::share_object(vault);
     OwnerCap { id: object::new(ctx), vault: vault_id }
 }
 
 // === Agent actions ===
 
-/// THE guardrail: the agent moves money ONLY through this recorded, capped path.
+/// THE guardrail: the agent moves money ONLY through this recorded, capped, rate-limited path.
 public fun spend_and_record(
     vault: &mut AgentVault,
     amount: u64,
@@ -112,10 +136,29 @@ public fun spend_and_record(
 ) {
     assert!(ctx.sender() == vault.agent, ENotAgent);
     assert!(vault.active, ENotActive);
+    let now = clock.timestamp_ms();
     if (vault.expires_at_ms != 0) {
-        assert!(clock.timestamp_ms() <= vault.expires_at_ms, EWindowClosed);
+        assert!(now <= vault.expires_at_ms, EWindowClosed);
     };
+
+    // destination control
+    if (vault.recipients_restricted) {
+        assert!(vault.allowed_recipients.contains(&recipient), ERecipientNotAllowed);
+    };
+
+    // lifetime cap
     assert!(vault.spent + amount <= vault.spend_limit, EOverSpendLimit);
+
+    // rolling-window rate cap (tumbling): reset the window once it has elapsed
+    if (vault.window_ms != 0) {
+        if (now >= vault.window_start_ms + vault.window_ms) {
+            vault.window_start_ms = now;
+            vault.window_spent = 0;
+        };
+        assert!(vault.window_spent + amount <= vault.rate_limit, EOverRateLimit);
+        vault.window_spent = vault.window_spent + amount;
+    };
+
     assert!(balance::value(&vault.funds) >= amount, EInsufficientBalance);
 
     vault.spent = vault.spent + amount;
@@ -125,7 +168,7 @@ public fun spend_and_record(
     append_entry(vault, amount, recipient, blob_id, content_hash);
 }
 
-/// Record a non-financial memory step (observation / reasoning). amount = 0.
+/// Record a non-financial memory step (observation / reasoning). amount = 0; not rate/recipient gated.
 public fun record_note(
     vault: &mut AgentVault,
     blob_id: String,
@@ -216,6 +259,29 @@ public fun remove_viewer(cap: &OwnerCap, vault: &mut AgentVault, viewer: address
     vault.viewers.remove(&viewer);
 }
 
+/// Turn the recipient allowlist on/off.
+public fun set_recipient_restriction(cap: &OwnerCap, vault: &mut AgentVault, restricted: bool) {
+    assert!(cap.vault == object::id(vault), EWrongVault);
+    vault.recipients_restricted = restricted;
+}
+
+public fun add_recipient(cap: &OwnerCap, vault: &mut AgentVault, recipient: address) {
+    assert!(cap.vault == object::id(vault), EWrongVault);
+    vault.allowed_recipients.insert(recipient);
+}
+
+public fun remove_recipient(cap: &OwnerCap, vault: &mut AgentVault, recipient: address) {
+    assert!(cap.vault == object::id(vault), EWrongVault);
+    vault.allowed_recipients.remove(&recipient);
+}
+
+/// Adjust the rolling rate cap (window_ms = 0 disables rate limiting).
+public fun set_rate_limit(cap: &OwnerCap, vault: &mut AgentVault, window_ms: u64, rate_limit: u64) {
+    assert!(cap.vault == object::id(vault), EWrongVault);
+    vault.window_ms = window_ms;
+    vault.rate_limit = rate_limit;
+}
+
 /// Kill switch — freezes all agent actions.
 public fun deactivate(cap: &OwnerCap, vault: &mut AgentVault) {
     assert!(cap.vault == object::id(vault), EWrongVault);
@@ -244,6 +310,11 @@ public fun count(v: &AgentVault): u64 { v.count }
 public fun spent(v: &AgentVault): u64 { v.spent }
 public fun spend_limit(v: &AgentVault): u64 { v.spend_limit }
 public fun remaining(v: &AgentVault): u64 { v.spend_limit - v.spent }
+public fun rate_limit(v: &AgentVault): u64 { v.rate_limit }
+public fun window_ms(v: &AgentVault): u64 { v.window_ms }
+public fun window_spent(v: &AgentVault): u64 { v.window_spent }
+public fun recipients_restricted(v: &AgentVault): bool { v.recipients_restricted }
+public fun is_recipient_allowed(v: &AgentVault, r: address): bool { v.allowed_recipients.contains(&r) }
 public fun balance_value(v: &AgentVault): u64 { balance::value(&v.funds) }
 public fun is_active(v: &AgentVault): bool { v.active }
 public fun owner(v: &AgentVault): address { v.owner }
