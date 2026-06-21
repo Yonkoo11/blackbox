@@ -1,0 +1,8 @@
+[package]
+name = "blackbox"
+edition = "2024"
+
+[dependencies]
+
+[addresses]
+blackbox = "0x0"
