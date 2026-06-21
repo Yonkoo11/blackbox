@@ -7,57 +7,126 @@
 <link rel="icon" type="image/svg+xml" href="logo.svg" />
 <meta property="og:title" content="Blackbox — the flight recorder for AI agents" />
 <meta property="og:description" content="Give an AI agent money without trusting it. On-chain spend limits + verifiable, tamper-evident memory on Sui, Walrus and Seal." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0b0e14; --panel:#121722; --panel2:#0f141d; --line:#1e2735;
-    --text:#e6edf3; --dim:#8b97a7; --accent:#4ea1ff; --green:#3fb950; --red:#f85149;
-    --amber:#d29922; --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,monospace;
+    --bg:#0a0d12; --s1:#0f141c; --s2:#141b25; --s3:#1a2330; --line:rgba(255,255,255,.08);
+    --line2:rgba(255,255,255,.13); --text:#eef2f7; --dim:#93a0b4; --faint:#6b7889;
+    --brand:#6aa6ff; --brand2:#8a7bff; --green:#46d18a; --greenDim:#1c3a2c; --red:#ff6b63; --redDim:#3a1f1f;
+    --amber:#e3b341; --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,monospace;
+    --ease:cubic-bezier(.23,1,.32,1);
   }
   *{box-sizing:border-box}
-  body{margin:0;background:radial-gradient(1200px 600px at 80% -10%,#13203a 0%,var(--bg) 55%);
-    color:var(--text);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
-  .wrap{max-width:1000px;margin:0 auto;padding:40px 24px 80px}
-  header{display:flex;align-items:center;gap:12px;margin-bottom:6px}
-  .logo{width:38px;height:38px;display:grid;place-items:center}
-  .logo svg{width:38px;height:38px;border-radius:10px;display:block}
-  h1{font-size:22px;margin:0;letter-spacing:-.2px}
-  .sub{color:var(--dim);margin:2px 0 28px;font-size:14px}
-  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
-    border-radius:14px;padding:18px 20px;margin-bottom:18px}
-  label{display:block;color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
-  .row{display:flex;gap:10px;flex-wrap:wrap}
-  input{flex:1;min-width:0;background:#0a0e16;border:1px solid var(--line);color:var(--text);
-    border-radius:10px;padding:11px 13px;font-family:var(--mono);font-size:13px}
-  .tablewrap{overflow-x:auto}
-  @media(max-width:520px){.row{flex-direction:column}.row button{width:100%}}
-  button{background:var(--accent);color:#03101f;border:0;border-radius:10px;padding:11px 18px;font-weight:700;cursor:pointer}
-  button.ghost{background:transparent;color:var(--text);border:1px solid var(--line);font-weight:600}
-  button:disabled{opacity:.5;cursor:default}
-  .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:4px}
-  .stat{background:#0a0e16;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
-  .stat .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
-  .stat .v{font-family:var(--mono);font-size:16px;margin-top:4px;word-break:break-all}
-  .verdict{display:inline-flex;align-items:center;gap:8px;font-weight:800;font-size:15px;padding:8px 14px;border-radius:999px}
-  .verdict.ok{background:rgba(63,185,80,.12);color:var(--green);border:1px solid rgba(63,185,80,.35)}
-  .verdict.bad{background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.35)}
-  table{width:100%;border-collapse:collapse;margin-top:6px}
-  th{ text-align:left;color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.07em;padding:8px 10px;border-bottom:1px solid var(--line)}
-  td{padding:11px 10px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle}
-  .pill{font-family:var(--mono);font-size:12px;font-weight:700;padding:4px 9px;border-radius:7px}
-  .pill.ok{background:rgba(63,185,80,.14);color:var(--green)}
-  .pill.bad{background:rgba(248,81,73,.14);color:var(--red)}
-  .mono{font-family:var(--mono);font-size:12px;color:var(--dim)}
-  .meter{height:8px;background:#0a0e16;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin-top:8px}
-  .meter > i{display:block;height:100%;background:linear-gradient(90deg,#3fb950,#d29922)}
-  .switch{display:inline-flex;align-items:center;gap:7px;color:var(--dim);font-size:12px;cursor:pointer;user-select:none}
-  .switch input{appearance:none;width:34px;height:18px;background:#26303f;border-radius:999px;position:relative;cursor:pointer;min-width:34px;flex:none}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  body{margin:0;color:var(--text);font:15px/1.55 'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif;
+    background:var(--bg);
+    background-image:
+      radial-gradient(900px 500px at 82% -8%, rgba(122,140,255,.14), transparent 60%),
+      radial-gradient(700px 420px at 8% 8%, rgba(70,150,255,.08), transparent 55%);
+    background-attachment:fixed;}
+  ::selection{background:rgba(106,166,255,.28)}
+  .wrap{max-width:880px;margin:0 auto;padding:38px 22px 90px}
+  /* header */
+  header{display:flex;align-items:center;gap:13px;margin-bottom:30px}
+  .logo{width:40px;height:40px;display:grid;place-items:center;flex:none}
+  .logo svg{width:40px;height:40px;border-radius:11px;display:block;
+    box-shadow:0 6px 22px rgba(110,92,255,.34), inset 0 1px 0 rgba(255,255,255,.25)}
+  h1{font-size:19px;font-weight:700;margin:0;letter-spacing:-.02em}
+  .tag{color:var(--dim);font-size:13.5px;margin-top:1px}
+  /* search */
+  .search{background:linear-gradient(180deg,var(--s2),var(--s1));border:1px solid var(--line);
+    border-radius:15px;padding:7px 7px 7px 16px;display:flex;align-items:center;gap:10px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05)}
+  .search:focus-within{border-color:rgba(106,166,255,.5);box-shadow:0 10px 30px rgba(0,0,0,.35),0 0 0 3px rgba(106,166,255,.16), inset 0 1px 0 rgba(255,255,255,.06)}
+  .search .px{color:var(--faint);font-size:12px;letter-spacing:.1em;text-transform:uppercase;flex:none}
+  input{flex:1;min-width:0;background:transparent;border:0;color:var(--text);font-family:var(--mono);
+    font-size:13px;padding:11px 0;outline:none}
+  input::placeholder{color:var(--faint)}
+  button{background:linear-gradient(180deg,#7fb0ff,#5a8eff);color:#04101f;border:0;border-radius:10px;
+    padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;flex:none;
+    box-shadow:0 0 22px rgba(106,166,255,.28);transition:transform .08s var(--ease),filter .16s var(--ease)}
+  button:hover{filter:brightness(1.07)} button:active{transform:scale(.97)}
+  button:disabled{opacity:.55;cursor:default;box-shadow:none}
+  .hint{color:var(--faint);font-size:13px;margin:11px 2px 0;line-height:1.5}
+  /* verdict */
+  .verdict{position:relative;border-radius:18px;padding:26px 26px 24px;margin-top:26px;overflow:hidden;
+    border:1px solid var(--line2);background:linear-gradient(180deg,var(--s2),var(--s1));
+    box-shadow:0 18px 50px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.09)}
+  .verdict.ok{box-shadow:0 18px 50px rgba(0,0,0,.4),0 0 60px rgba(70,209,138,.10), inset 0 1px 0 rgba(255,255,255,.09)}
+  .verdict.bad{box-shadow:0 18px 50px rgba(0,0,0,.4),0 0 60px rgba(255,107,99,.12), inset 0 1px 0 rgba(255,255,255,.09)}
+  .verdict::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(420px 200px at 90% -30%,var(--gl,rgba(70,209,138,.16)),transparent 70%)}
+  .vtop{display:flex;align-items:center;gap:15px;position:relative;z-index:1;flex-wrap:wrap}
+  .seal{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;flex:none;
+    font-size:26px;font-weight:800;position:relative}
+  .seal.ok{background:radial-gradient(circle at 50% 35%,#2a5a42,#15301f);color:#7df0b4;
+    box-shadow:inset 0 0 0 1px rgba(70,209,138,.4),0 0 26px rgba(70,209,138,.3)}
+  .seal.bad{background:radial-gradient(circle at 50% 35%,#5a2826,#311616);color:#ff9b95;
+    box-shadow:inset 0 0 0 1px rgba(255,107,99,.45),0 0 26px rgba(255,107,99,.32)}
+  .seal .ring{position:absolute;inset:-6px;border-radius:18px;border:1.5px solid currentColor;opacity:.2;animation:breathe 3.4s var(--ease) infinite}
+  @keyframes breathe{0%,100%{transform:scale(1);opacity:.18}50%{transform:scale(1.07);opacity:.06}}
+  .vverd{font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+  .vverd.ok{color:#5fe6a0} .vverd.bad{color:#ff8079}
+  .vsub{color:var(--dim);font-size:13.5px;margin-top:3px}
+  .vsub b{color:var(--text);font-weight:600}
+  /* inclusion proof */
+  .proof{margin-top:20px;position:relative;z-index:1;border-radius:12px;border:1px solid var(--line);
+    background:rgba(0,0,0,.22);padding:14px 16px}
+  .proof .pl{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin-bottom:9px}
+  .prow{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:4px 0;font-family:var(--mono);font-size:12.5px}
+  .prow span:first-child{color:var(--dim)}
+  .prow .h{color:var(--text);word-break:break-all;text-align:right}
+  .prow.match .h{color:#5fe6a0} .prow.nomatch .h{color:#ff8079}
+  .eq{text-align:center;color:var(--faint);font-family:var(--mono);font-size:12px;padding:3px 0}
+  .eq b.ok{color:#5fe6a0} .eq b.bad{color:#ff8079}
+  /* tape / chain */
+  .secl{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin:30px 2px 12px}
+  .tape{list-style:none;margin:0;padding:0}
+  .rec{position:relative;padding:13px 0 13px 30px;border-left:2px solid var(--greenDim);margin-left:7px}
+  .rec.bad{border-left-color:var(--red)}
+  .rec:first-child{padding-top:4px} .rec:last-child{border-left-color:transparent}
+  .rec::before{content:"";position:absolute;left:-7px;top:16px;width:12px;height:12px;border-radius:50%;
+    background:var(--s1);border:2px solid var(--green);box-shadow:0 0 10px rgba(70,209,138,.45)}
+  .rec:first-child::before{top:7px}
+  .rec.bad::before{border-color:var(--red);box-shadow:0 0 10px rgba(255,107,99,.5)}
+  .rline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .seq{font-family:var(--mono);font-size:12px;color:var(--faint)}
+  .kind{font-size:12px;font-weight:700;letter-spacing:.06em;padding:3px 8px;border-radius:6px}
+  .kind.pay{background:rgba(227,179,65,.14);color:var(--amber)}
+  .kind.note{background:rgba(255,255,255,.07);color:var(--dim)}
+  .amt{font-family:var(--mono);font-size:13px;color:var(--text);font-variant-numeric:tabular-nums}
+  .pill{font-family:var(--mono);font-size:12px;font-weight:700;padding:3px 9px;border-radius:6px;margin-left:auto}
+  .pill.ok{background:rgba(70,209,138,.15);color:#5fe6a0}
+  .pill.bad{background:rgba(255,107,99,.16);color:#ff8079}
+  .rmeta{display:flex;align-items:center;gap:16px;margin-top:7px;flex-wrap:wrap}
+  .rmeta a{color:var(--brand);text-decoration:none;font-family:var(--mono);font-size:12px}
+  .rmeta a:hover{text-decoration:underline}
+  .switch{display:inline-flex;align-items:center;gap:7px;color:var(--faint);font-size:12px;cursor:pointer;user-select:none}
+  .switch input{appearance:none;width:32px;height:18px;background:#2b3543;border-radius:999px;position:relative;cursor:pointer;flex:none;transition:background .16s var(--ease)}
   .switch input:checked{background:var(--red)}
-  .switch input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:.15s}
-  .switch input:checked::after{left:18px}
-  .muted{color:var(--dim);font-size:13px}
-  a{color:var(--accent);text-decoration:none}
-  .err{color:var(--red);font-family:var(--mono);font-size:13px;white-space:pre-wrap}
-  footer{color:var(--dim);font-size:12px;margin-top:30px;text-align:center}
+  .switch input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:.16s var(--ease)}
+  .switch input:checked::after{left:16px}
+  /* guardrail strip */
+  .policy{margin-top:26px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.02);
+    padding:14px 16px;display:flex;gap:8px 26px;flex-wrap:wrap;align-items:center}
+  .policy .pl{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);width:100%}
+  .pcell{font-size:13px;color:var(--dim)} .pcell b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+  .meter{height:5px;width:120px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;margin-top:6px}
+  .meter>i{display:block;height:100%;background:linear-gradient(90deg,var(--green),var(--amber))}
+  /* misc */
+  .loading{border:1px solid var(--line);border-radius:14px;padding:20px;color:var(--dim);background:var(--s1);
+    display:flex;align-items:center;gap:11px}
+  .spin{width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,.15);border-top-color:var(--brand);animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .err{border:1px solid rgba(255,107,99,.3);background:rgba(255,107,99,.06);border-radius:14px;padding:16px;
+    color:#ff8079;font-family:var(--mono);font-size:13px;white-space:pre-wrap}
+  .mono{font-family:var(--mono)}
+  footer{color:var(--faint);font-size:12.5px;margin-top:40px;text-align:center;line-height:1.7}
+  footer a{color:var(--dim);text-decoration:none} footer a:hover{color:var(--text)}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  @media(max-width:560px){.wrap{padding:26px 16px 70px}.vverd{font-size:21px}.prow .h{font-size:12px}}
 </style>
 </head>
 <body>
@@ -66,27 +135,24 @@
     <div class="logo"><svg viewBox="0 0 512 512" aria-label="Blackbox"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4ea1ff"/><stop offset="1" stop-color="#7c5cff"/></linearGradient></defs><rect width="512" height="512" rx="116" fill="url(#lg)"/><path d="M136 188 L256 120 L376 188 L376 324 L256 392 L136 324 Z" fill="none" stroke="#fff" stroke-width="22" stroke-linejoin="round" opacity="0.55"/><path d="M188 258 l44 44 l96 -100" fill="none" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
     <div>
       <h1>Blackbox</h1>
-      <div class="sub">The flight recorder for AI agents — verify what an agent did, and prove no one changed the record.</div>
+      <div class="tag">The flight recorder for AI agents</div>
     </div>
   </header>
 
-  <div class="card">
-    <label for="vault">Agent vault id (Sui testnet)</label>
-    <div class="row">
-      <input id="vault" spellcheck="false" />
-      <button id="go">Verify</button>
-    </div>
-    <div class="muted" style="margin-top:10px">
-      Reads the agent's action log straight from Sui and Walrus, recomputes the cryptographic chain in your
-      browser, and checks it against the on-chain seal. Nothing is trusted; everything is recomputed.
-    </div>
+  <div class="search">
+    <span class="px">vault</span>
+    <input id="vault" spellcheck="false" placeholder="0x… agent vault id (Sui testnet)" />
+    <button id="go">Verify</button>
   </div>
+  <div class="hint">Reads an agent's action log straight from Sui and Walrus, recomputes the cryptographic
+    chain in your browser, and checks it against the on-chain seal. Nothing is trusted; everything is recomputed.</div>
 
   <div id="status"></div>
   <div id="result"></div>
 
   <footer>
-    Package <span class="mono" id="pkg"></span> · open source (MIT) · built for Sui Overflow 2026 (Walrus track)
+    <a id="pkglink" target="_blank">contract</a> · <a href="https://github.com/Yonkoo11/blackbox" target="_blank">source (MIT)</a> · Sui Overflow 2026 · Walrus track<br>
+    <span class="mono" id="pkg"></span>
   </footer>
 </div>
 
@@ -97,15 +163,16 @@ const PKG = '0xc2a851cb0cd8603740fe0b838623b341652fd8f7945fcb1351f8ca158e9c5225'
 const DEFAULT_VAULT = '0x8d1e23c0619253dffcaf004bc32781bf62d25664f7cd18ab593891da781a6516';
 const RPC = 'https://fullnode.testnet.sui.io:443';
 const AGG = 'https://aggregator.walrus-testnet.walrus.space/v1/blobs/';
+const EXPLORER = 'https://testnet.suivision.xyz/package/';
 const EVENT = `${PKG}::blackbox::ActionRecorded`;
 
-document.getElementById('pkg').textContent = PKG.slice(0,10)+'…'+PKG.slice(-6);
+document.getElementById('pkg').textContent = PKG;
+document.getElementById('pkglink').href = EXPLORER + PKG;
 const $vault = document.getElementById('vault');
 const $status = document.getElementById('status');
 const $result = document.getElementById('result');
 $vault.value = DEFAULT_VAULT;
 
-const enc = new TextEncoder();
 const hex = b => Array.from(b, x=>x.toString(16).padStart(2,'0')).join('');
 const norm = id => '0x' + (id.startsWith('0x')?id.slice(2):id).toLowerCase().replace(/^0+/,'').padStart(1,'0');
 function u64le(v){const o=new Uint8Array(8);let n=BigInt(v);for(let i=0;i<8;i++){o[i]=Number(n&0xffn);n>>=8n;}return o;}
@@ -131,17 +198,17 @@ async function fetchBlob(id){
   blobCache.set(id,b); return b;
 }
 
-let STATE = null; // {vaultId, head, fields, steps:[{seq,amount,blobId,entryOnchain,bytes}]}
+let STATE = null;
 
 async function load(vaultId){
-  $status.innerHTML = '<div class="card muted">Reading on-chain log and Walrus blobs…</div>';
+  $status.innerHTML = '<div class="loading"><span class="spin"></span> Reading on-chain log and Walrus blobs…</div>';
   $result.innerHTML = '';
   const evs = await rpc('suix_queryEvents',[{MoveEventType:EVENT}, null, 200, false]);
   const mine = (evs.data||[]).map(e=>e.parsedJson).filter(p=>p && norm(p.vault)===norm(vaultId))
     .sort((a,b)=>Number(a.seq)-Number(b.seq));
   if(!mine.length) throw new Error('No actions found for this vault on testnet.');
   const obj = await rpc('sui_getObject',[vaultId,{showContent:true}]);
-  const fields = obj?.data?.content?.fields;
+  const fields = (obj?.data?.content||{}).fields;
   if(!fields) throw new Error('Vault object not found.');
   const steps = [];
   for(const ev of mine){
@@ -173,64 +240,54 @@ function render(){
   const sui = m => (Number(m)/1e9).toLocaleString(undefined,{maximumFractionDigits:4});
   const humanWin = ms => { ms=Number(ms); if(!ms) return ''; const h=ms/3600000; if(h>=24) return (h/24)+'d'; if(h>=1) return h+'h'; return Math.round(ms/60000)+'m'; };
   const rateTxt = Number(fields.window_ms) ? `${sui(fields.rate_limit)} SUI / ${humanWin(fields.window_ms)}` : 'none';
-  const recipTxt = fields.recipients_restricted ? 'allowlist enforced' : 'any address';
+  const recipTxt = fields.recipients_restricted ? 'allowlist only' : 'any address';
   const expTxt = Number(fields.expires_at_ms) ? new Date(Number(fields.expires_at_ms)).toISOString().slice(0,10) : 'none';
 
+  const gl = chainValid ? 'rgba(70,209,138,.16)' : 'rgba(255,107,99,.18)';
   $status.innerHTML = `
-    <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
-      <div>
-        <div class="muted">Verdict for this agent's recorded history</div>
-        <div style="margin-top:8px">${chainValid
-          ? '<span class="verdict ok">● VERIFIED — record is intact</span>'
-          : '<span class="verdict bad">● TAMPERED — record was altered</span>'}</div>
+    <div class="verdict ${chainValid?'ok':'bad'}" style="--gl:${gl}">
+      <div class="vtop">
+        <div class="seal ${chainValid?'ok':'bad'}"><span class="ring"></span>${chainValid?'✓':'!'}</div>
+        <div>
+          <div class="vverd ${chainValid?'ok':'bad'}">${chainValid?'VERIFIED — record is intact':'TAMPERED — record was altered'}</div>
+          <div class="vsub">agent <b>${norm(fields.agent).slice(0,12)}…</b> · <b>${fields.count}</b> actions sealed · status <b>${fields.active?'active':'frozen'}</b></div>
+        </div>
       </div>
-      <div class="muted" style="text-align:right">
-        on-chain seal<br><span class="mono">${headHex.slice(0,20)}…</span><br>
-        recomputed<br><span class="mono" style="color:${chainValid?'var(--green)':'var(--red)'}">${recomputedHead.slice(0,20)}…</span>
+      <div class="proof">
+        <div class="pl">inclusion proof — recomputed in your browser</div>
+        <div class="prow"><span>on-chain seal</span><span class="h">${headHex}</span></div>
+        <div class="eq">${chainValid?'<b class="ok">≡ matches</b>':'<b class="bad">≠ does not match</b>'}</div>
+        <div class="prow ${chainValid?'match':'nomatch'}"><span>recomputed</span><span class="h">${recomputedHead}</span></div>
       </div>
     </div>`;
 
   $result.innerHTML = `
-    <div class="card">
-      <div class="summary">
-        <div class="stat"><div class="k">Actions recorded</div><div class="v">${fields.count}</div></div>
-        <div class="stat"><div class="k">Agent</div><div class="v">${norm(fields.agent).slice(0,10)}…</div></div>
-        <div class="stat"><div class="k">Status</div><div class="v">${fields.active?'active':'frozen'}</div></div>
-        <div class="stat"><div class="k">Spent / lifetime cap</div><div class="v">${sui(spent)} / ${sui(limit)} SUI
-          <div class="meter"><i style="width:${pct}%"></i></div></div></div>
-      </div>
+    <div class="secl">record tape — ${rows.length} linked entries</div>
+    <ul class="tape">
+      ${rows.map(({s,ok})=>`
+        <li class="rec ${ok?'ok':'bad'}">
+          <div class="rline">
+            <span class="seq">#${s.seq}</span>
+            <span class="kind ${s.amount>0n?'pay':'note'}">${s.amount>0n?'PAYMENT':'NOTE'}</span>
+            ${s.amount>0n?`<span class="amt">${sui(s.amount)} SUI</span>`:''}
+            <span class="pill ${ok?'ok':'bad'}">${ok?'VALID':'TAMPERED'}</span>
+          </div>
+          <div class="rmeta">
+            <a href="${AGG}${s.blobId}" target="_blank">walrus ${s.blobId.slice(0,16)}…</a>
+            <label class="switch"><input type="checkbox" data-seq="${s.seq}" ${tampered.has(s.seq)?'checked':''}> flip a byte</label>
+          </div>
+        </li>`).join('')}
+    </ul>
+    <div class="policy">
+      <span class="pl">on-chain guardrail — enforced by the contract, not by trust</span>
+      <span class="pcell">spent <b>${sui(spent)} / ${sui(limit)} SUI</b><div class="meter"><i style="width:${pct}%"></i></div></span>
+      <span class="pcell">rate cap <b>${rateTxt}</b></span>
+      <span class="pcell">recipients <b>${recipTxt}</b></span>
+      <span class="pcell">expiry <b>${expTxt}</b></span>
+      <span class="pcell">kill switch <b>${fields.active?'armed':'triggered'}</b></span>
     </div>
-    <div class="card">
-      <div class="muted" style="margin-bottom:10px">On-chain guardrail — enforced by the contract, not by trust</div>
-      <div class="summary">
-        <div class="stat"><div class="k">Rate limit</div><div class="v">${rateTxt}</div></div>
-        <div class="stat"><div class="k">Recipients</div><div class="v">${recipTxt}</div></div>
-        <div class="stat"><div class="k">Policy expiry</div><div class="v">${expTxt}</div></div>
-        <div class="stat"><div class="k">Kill switch</div><div class="v">${fields.active?'armed':'triggered'}</div></div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="tablewrap">
-      <table>
-        <thead><tr><th>#</th><th>Action</th><th>Amount</th><th>Walrus blob</th><th>Integrity</th><th>Simulate tamper</th></tr></thead>
-        <tbody>
-          ${rows.map(({s,ok})=>`
-            <tr>
-              <td class="mono">${s.seq}</td>
-              <td>${s.amount>0n?'payment':'note'}</td>
-              <td class="mono">${s.amount.toString()}</td>
-              <td><a class="mono" href="${AGG}${s.blobId}" target="_blank">${s.blobId.slice(0,14)}…</a></td>
-              <td>${ok?'<span class="pill ok">VALID</span>':'<span class="pill bad">TAMPERED</span>'}</td>
-              <td><label class="switch"><input type="checkbox" data-seq="${s.seq}" ${tampered.has(s.seq)?'checked':''}> flip a byte</label></td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-      </div>
-      <div class="muted" style="margin-top:12px">
-        Toggle “flip a byte” to simulate someone editing a stored payload. That step and every step after it
-        turn red, and the recomputed seal stops matching the chain — exactly how a real tamper is caught.
-      </div>
-    </div>`;
+    <div class="hint" style="margin-top:14px">Toggle “flip a byte” on any entry to simulate someone editing a stored
+      payload. That entry and every one after it turn red, and the recomputed seal stops matching — the chain catches it.</div>`;
 
   $result.querySelectorAll('input[data-seq]').forEach(cb=>cb.addEventListener('change',e=>{
     const seq=Number(e.target.dataset.seq);
@@ -241,7 +298,7 @@ function render(){
 
 async function go(){
   try{ document.getElementById('go').disabled=true; await load($vault.value.trim()); }
-  catch(err){ $status.innerHTML = `<div class="card"><div class="err">${err.message||err}</div></div>`; $result.innerHTML=''; }
+  catch(err){ $status.innerHTML = `<div class="err">${err.message||err}</div>`; $result.innerHTML=''; }
   finally{ document.getElementById('go').disabled=false; }
 }
 document.getElementById('go').addEventListener('click',go);
