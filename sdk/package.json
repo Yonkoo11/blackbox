@@ -12,7 +12,8 @@
   "scripts": {
     "build": "tsc",
     "test": "tsx test/hash.test.ts",
-    "demo": "tsx demo/run-demo.ts"
+    "demo": "tsx demo/run-demo.ts",
+    "reveal": "tsx demo/reveal.ts"
   },
   "dependencies": {
     "@mysten/seal": "^1.2.1",

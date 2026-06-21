@@ -181,12 +181,16 @@ public fun compute_entry_hash(
 // === Seal access policy ===
 
 /// Seal key servers dry-run this; access is granted iff it does NOT abort.
-/// Grants decryption to the vault owner and any allowlisted viewer (auditor).
-/// `id` must be namespaced by the vault's object id (prevents cross-vault key reuse).
+/// `id` must be namespaced by the vault's object id (prevents cross-vault key reuse),
+/// and the requester must be the vault owner or an allowlisted viewer (auditor).
 entry fun seal_approve(id: vector<u8>, vault: &AgentVault, ctx: &TxContext) {
-    assert!(is_prefix(&vault.id.to_bytes(), &id), ENoAccess);
-    let s = ctx.sender();
-    assert!(s == vault.owner || vault.viewers.contains(&s), ENoAccess);
+    assert!(can_access(vault, &id, ctx.sender()), ENoAccess);
+}
+
+/// Pure, testable access predicate behind `seal_approve`.
+public fun can_access(vault: &AgentVault, id: &vector<u8>, requester: address): bool {
+    is_prefix(&vault.id.to_bytes(), id)
+        && (requester == vault.owner || vault.viewers.contains(&requester))
 }
 
 fun is_prefix(prefix: &vector<u8>, full: &vector<u8>): bool {
